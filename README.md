@@ -62,6 +62,45 @@ python -m signal_scout --llm --out ranked.csv
 python -m pytest
 ```
 
+## The full pipeline: ingest → score → alert → backtest
+
+```bash
+# 1. Pull the last 30 days of news for every account into data/signals.csv
+python -m signal_scout ingest --days 30
+
+# 2. Score, and post tier-A accounts to Slack (preview first with --slack-dry-run)
+export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+python -m signal_scout score --llm --slack
+
+# 3. Check the scores against closed deals and tune the weights
+python -m signal_scout backtest --outcomes data/outcomes.csv
+```
+
+**Ingest** builds a Google News search feed for each account name. It keeps only headlines that mention the
+company as a whole word (so "Acme" doesn't match "Acmeville"), and appends new items to the signals CSV. Item
+ids come from a hash of the link, so re-running never duplicates a signal. A feed that times out is skipped
+and reported; the run carries on. Any RSS or Atom feed is parsed the same way.
+
+**Alerts** send one Slack message per run, listing each picked account with its score and the reasons
+behind it, so a rep knows *why* to call today, not just *who*. Use `--slack-tiers A B` to include B-tier.
+
+**Backtest** answers the question every scoring model should face: *does a higher score actually mean
+a higher chance of winning?*
+
+```
+Tier  Deals  Won  Win rate
+A         1    1    100.0%
+B         5    4     80.0%
+C         6    0      0.0%
+
+AUC at current weights (fit 0.6): 0.943
+```
+
+AUC is the chance that a random won deal outscores a random lost one (0.5 = a coin flip, 1.0 = perfect).
+The command then tries every fit/intent split from 0.0 to 1.0. It only suggests changing the weights in
+`icp.json` when another split scores a higher AUC, and it warns when the sample is too small to trust.
+The sample `outcomes.csv` is fictional; for real use, score accounts as of the date each deal opened.
+
 Sample output:
 
 ```
@@ -85,6 +124,7 @@ Logistics                    3      0   55.2       64
 | `data/accounts.csv` | `domain, name, industry, employees, region` |
 | `data/signals.csv` | `id, domain, date (YYYY-MM-DD), source, text` |
 | `data/icp.json` | verticals with `deal_value` / `accessibility`, `employee_range`, `regions`, `weights` |
+| `data/outcomes.csv` | `domain, outcome (won / lost)`, used only by `backtest` |
 
 Point the CLI at your own files with `--accounts`, `--signals` and `--icp`. Accounts and signals join on `domain`.
 The sample companies are fictional.
@@ -96,16 +136,19 @@ signal_scout/
   models.py     data classes + CSV/JSON loaders
   classify.py   keyword-rules and Claude signal classifiers
   scoring.py    fit, intent, tiers, segment roll-up
-  cli.py        command-line entry point
-data/           sample ICP, accounts and signals
-tests/          unit tests for scoring and classification
+  ingest.py     RSS / Atom news ingestion with dedupe
+  alerts.py     Slack Block Kit alerts
+  backtest.py   tier win rates, AUC and weight sweep
+  cli.py        command-line entry point (score / ingest / backtest)
+data/           sample ICP, accounts, signals and outcomes
+tests/          unit tests for every module
 ```
 
 ## Ideas for next steps
 
-- Pull signals live (RSS, job boards, LinkedIn via Apify) instead of from a CSV.
-- Push A-tier accounts to HubSpot or a Slack channel with their reasons attached.
-- Backtest the weights against closed-won deals to tune them from data instead of judgement.
+- More signal sources: job boards and LinkedIn (via Apify) next to the news feed.
+- Push A-tier accounts straight into HubSpot as tasks for the account owner.
+- Schedule the pipeline daily with GitHub Actions or n8n.
 
 ---
 
