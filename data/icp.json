@@ -1,0 +1,12 @@
+{
+  "verticals": {
+    "Industrial Manufacturing": {"deal_value": 5, "accessibility": 4},
+    "Logistics": {"deal_value": 4, "accessibility": 4},
+    "B2B SaaS": {"deal_value": 3, "accessibility": 5},
+    "Healthcare": {"deal_value": 5, "accessibility": 2},
+    "Professional Services": {"deal_value": 2, "accessibility": 4}
+  },
+  "employee_range": [50, 1000],
+  "regions": ["North America", "UAE", "India"],
+  "weights": {"fit": 0.6, "intent": 0.4}
+}
